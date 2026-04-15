@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>厦门同安老城3D地图</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { overflow: hidden; font-family: "Microsoft YaHei", sans-serif; background: #f0f8ff; }
+        #container { width: 100vw; height: 100vh; position: relative; }
+        /* 加载提示 */
+        #loading {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 18px; color: #333; z-index: 10;
+        }
+        /* 弹窗样式 */
+        .popup {
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 340px;
+            background: #fff;
+            border-radius: 14px;
+            padding: 26px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+            display: none;
+            z-index: 999;
+        }
+        .popup h3 {
+            font-size: 18px;
+            margin-bottom: 12px;
+            color: #222;
+        }
+        .popup p {
+            font-size: 14px;
+            color: #555;
+            line-height: 1.6;
+        }
+        .close {
+            position: absolute;
+            right: 16px; top: 14px;
+            font-size: 20px;
+            cursor: pointer;
+            color: #999;
+        }
+    </style>
+	
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="container">
+        <div id="loading">3D地图加载中...</div>
+    </div>
+
+    <!-- 详情弹窗 -->
+    <div class="popup" id="infoPopup">
+        <span class="close" onclick="closePopup()">×</span>
+        <h3 id="popupTitle">标题</h3>
+        <p id="popupContent">内容</p>
+    </div>
+
+    <script type="module">
+        // 1. 引入 Three.js 和控制器
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        console.log("Three.js 版本:", THREE.REVISION);
+
+        // 2. 基础场景
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xf0f8ff);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('container').appendChild(renderer.domElement);
+
+        // 3. 控制器
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        camera.position.set(10, 10, 10);
+        controls.target.set(0, 0, 0);
+
+        // 4. 灯光
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // 5. 加载模型
+        const loader = new GLTFLoader();
+        const loadingText = document.getElementById('loading');
+
+        loader.load(
+            'model.glb',
+            // 加载成功
+            (gltf) => {
+                console.log("模型加载成功！", gltf);
+                const model = gltf.scene;
+                
+                // 自动适配模型尺寸
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                const center = box.getCenter(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5;
+
+                // 重置模型位置到中心
+                model.position.x = -center.x;
+                model.position.y = -center.y;
+                model.position.z = -center.z;
+
+                // 重置相机位置
+                camera.position.set(cameraZ, cameraZ * 0.8, cameraZ);
+                controls.target.set(0, 0, 0);
+                controls.update();
+
+                scene.add(model);
+                loadingText.style.display = 'none';
+
+                const markers = [
+                    {
+                        position: new THREE.Vector3(-maxDim*0.12, maxDim*0.08, maxDim*0.38),
+                        title: "同安老城区入口",
+                        content: "这里是同安老城片区主入口，保留大量闽南古厝风貌，是同安历史文化核心区域。"
+                    },
+                    {
+                        position: new THREE.Vector3(maxDim*0.1, maxDim*0.08, maxDim*0.05),
+                        title: "同安孔庙",
+                        content: "始建于五代，历史悠久，是同安重要文化地标，周边古街纵横，极具特色。"
+                    },
+                    {
+                        position: new THREE.Vector3(maxDim*0.03, maxDim*0.08, -maxDim*0.39),
+                        title: "同安钟楼",
+                        content: "老城中心地标建筑，见证同安百年变迁，周边小吃众多，是游客必打卡点。"
+                    }
+                ];
+
+                // 生成标记点
+                const markerGroup = new THREE.Group();
+                scene.add(markerGroup);
+                const markerSize = maxDim * 0.02;
+                const mat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+
+                markers.forEach((m, idx) => {
+                    const geo = new THREE.SphereGeometry(markerSize, 16, 16);
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(m.position);
+                    mesh.userData = { index: idx, type: 'marker' };
+                    markerGroup.add(mesh);
+                });
+
+                // 7. 点击事件
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+                const popup = document.getElementById('infoPopup');
+                const t = document.getElementById('popupTitle');
+                const c = document.getElementById('popupContent');
+
+                window.addEventListener('click', (e) => {
+                    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouse, camera);
+                    const res = raycaster.intersectObjects(markerGroup.children);
+                    if (res.length) {
+                        const idx = res[0].object.userData.index;
+                        t.innerText = markers[idx].title;
+                        c.innerText = markers[idx].content;
+                        popup.style.display = 'block';
+                    }
+                });
+
+                window.closePopup = function() {
+                    popup.style.display = 'none';
+                };
+            },
+            // 加载进度
+            (xhr) => {
+                const percent = Math.round((xhr.loaded / xhr.total) * 100);
+                loadingText.innerText = `模型加载中: ${percent}%`;
+                console.log(`加载进度: ${percent}%`);
+            },
+            // 加载错误
+            (error) => {
+                loadingText.innerText = "模型加载失败！请检查文件名/路径";
+                console.error("模型加载错误:", error);
+                alert("模型加载失败！\n请确认：\n1. 模型文件名是 model.glb\n2. 模型和 index.html 在同一个文件夹\n3. 文件名没有空格/大写");
+            }
+        );
+
+        //渲染循环
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        //窗口自适应
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
